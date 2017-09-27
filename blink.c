@@ -23,7 +23,6 @@
 #define BLINK_GPIO CONFIG_BLINK_GPIO
 
 SemaphoreHandle_t xMutex;
-TaskHandle_t pxCreatedBlinkFastTask;
 
 void TestVoidPoiter(void* pvParameter)
 {
@@ -37,6 +36,7 @@ void blink_fast_task(void *pvParameter)
 {
     int i=50;
     bool s=1;
+    TaskHandle_t xIdleHandle;
     while(1) {
         xSemaphoreTake( xMutex, portMAX_DELAY );
         printf("%s: blink for 50 times\r\n",(char*)pvParameter);
@@ -49,8 +49,8 @@ void blink_fast_task(void *pvParameter)
         printf("%s: finish blink and suspend\r\n\r\n\r\n ",(char*)pvParameter);
         // attention: you must give back the semaphore before Suspend the task
         xSemaphoreGive( xMutex );
-
-        vTaskSuspend(pxCreatedBlinkFastTask);
+        xIdleHandle = xTaskGetCurrentTaskHandle();
+        vTaskSuspend(xIdleHandle);
 
     }
 
@@ -65,11 +65,11 @@ void blink_task(void *pvParameter)
     */
     int *p_int = (int*)pvParameter;
     int i=0;
-    TaskHandle_t localHandler=pxCreatedBlinkFastTask;
+    TaskHandle_t localHandler=NULL;
 
     while(1) {
         i++;
-        if(i ==10)
+        if(i ==5)
         {    
             /*create a high priority task, block for 5s*/
             if(*p_int==1)
@@ -77,7 +77,7 @@ void blink_task(void *pvParameter)
             else
                 xTaskCreate(&blink_fast_task, "blink_fast_task2", 2048, "Created by other task2", 5, &localHandler);       
             vTaskDelay(1000 / portTICK_PERIOD_MS);
-        } else if(i==20)
+        } else if(i==10)
         {
             i=0;
             vTaskDelete(localHandler);
@@ -87,7 +87,7 @@ void blink_task(void *pvParameter)
         xSemaphoreTake(xMutex, portMAX_DELAY);
         if(i==0)
         {
-            printf("task%d delete the task it created\r\n\r\n",*p_int);
+            printf("task%d delete delete delete the task\r\n\r\n",*p_int);
             vTaskDelay(1000 / portTICK_PERIOD_MS);
         }
         TestVoidPoiter(&i);        
