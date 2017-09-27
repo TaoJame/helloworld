@@ -16,11 +16,14 @@
 
 /* Can run 'make menuconfig' to choose the GPIO to blink,
    or you can edit the following line and set a number here.
+
+   the other two LED are assigned to show the UART status
+   so the only one LED for user is connected to GPIO25
 */
 #define BLINK_GPIO CONFIG_BLINK_GPIO
 
 SemaphoreHandle_t xMutex;
-
+TaskHandle_t pxCreatedBlinkFastTask;
 
 void TestVoidPoiter(void* pvParameter)
 {
@@ -28,6 +31,30 @@ void TestVoidPoiter(void* pvParameter)
     printf("test TestVoidPoiter: %d\r\n",*p_int);    
 }
 
+
+
+void blink_fast_task(void *pvParameter)
+{
+    int i=50;
+    bool s=1;
+    while(1) {
+        xSemaphoreTake( xMutex, portMAX_DELAY );
+        printf("%s: blink for 50 times\r\n",(char*)pvParameter);
+        while(i--)
+        {
+            s=!s;
+            gpio_set_level(BLINK_GPIO, s);
+            vTaskDelay(50 / portTICK_PERIOD_MS);            
+        }
+        printf("%s: finish blink and suspend\r\n\r\n\r\n ",(char*)pvParameter);
+        // attention: you must give back the semaphore before Suspend the task
+        xSemaphoreGive( xMutex );
+
+        vTaskSuspend(pxCreatedBlinkFastTask);
+
+    }
+
+}
 void blink_task(void *pvParameter)
 {
     /* Configure the IOMUX register for pad BLINK_GPIO (some pads are
@@ -38,16 +65,49 @@ void blink_task(void *pvParameter)
     */
     int *p_int = (int*)pvParameter;
     int i=0;
-    gpio_pad_select_gpio(BLINK_GPIO);
-    /* Set the GPIO as a push/pull output */
-    gpio_set_direction(BLINK_GPIO, GPIO_MODE_OUTPUT);
+    TaskHandle_t localHandler=pxCreatedBlinkFastTask;
+
     while(1) {
-        xSemaphoreTake( xMutex, portMAX_DELAY );
         i++;
-        TestVoidPoiter(&i);
-        
+        if(i ==10)
+        {    
+            /*create a high priority task, block for 5s*/
+            if(*p_int==1)
+                xTaskCreate(&blink_fast_task, "blink_fast_task1", 2048, "Created by other task1", 5, &localHandler);
+            else
+                xTaskCreate(&blink_fast_task, "blink_fast_task2", 2048, "Created by other task2", 5, &localHandler);       
+            vTaskDelay(1000 / portTICK_PERIOD_MS);
+        } else if(i==20)
         {
-            printf("blink task:%d running \r\n\r\n", *p_int);
+            i=0;
+            vTaskDelete(localHandler);
+            /*delete a high priority task*/
+        }
+                    
+        xSemaphoreTake(xMutex, portMAX_DELAY);
+        if(i==0)
+        {
+            printf("task%d delete the task it created\r\n\r\n",*p_int);
+            vTaskDelay(1000 / portTICK_PERIOD_MS);
+        }
+        TestVoidPoiter(&i);        
+        {
+            
+            if(*p_int==1)
+            {
+                 /* Blink off (output low) */
+                gpio_set_level(BLINK_GPIO, 0);
+                printf("blink task%d Blink off \r\n\r\n", *p_int);
+                vTaskDelay(300 / portTICK_PERIOD_MS);
+            }
+            else if(*p_int==2)
+            {
+                /* Blink on (output high) */
+                gpio_set_level(BLINK_GPIO, 1);
+                printf("blink task%d Blink on \r\n\r\n", *p_int); 
+                vTaskDelay(200 / portTICK_PERIOD_MS);
+            }
+            
         }
         xSemaphoreGive( xMutex );
 
@@ -68,6 +128,12 @@ int task2=2;//放在静态缓冲区就非常好
 
 void app_main()
 {
+    
+    gpio_pad_select_gpio(BLINK_GPIO);
+    /* Set the GPIO as a push/pull output */
+    gpio_set_direction(BLINK_GPIO, GPIO_MODE_OUTPUT);
+    
+    
     xMutex=xSemaphoreCreateMutex();
 
     xTaskCreate(&blink_task, "blink_task1", 2048, &task1, 2, NULL);//set the STACK SIZE bigger
