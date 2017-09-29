@@ -23,6 +23,7 @@
 #define BLINK_GPIO CONFIG_BLINK_GPIO
 
 SemaphoreHandle_t xMutex;
+QueueHandle_t xQueue;
 
 void TestVoidPoiter(void* pvParameter)
 {
